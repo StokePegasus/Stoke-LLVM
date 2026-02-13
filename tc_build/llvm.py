@@ -313,8 +313,7 @@ class LLVMBuilder(Builder):
 
         # https://github.com/llvm/llvm-project/commit/b593110d89aea76b8b10152b24ece154bff3e4b5
         llvm_enable_projects = self.projects.copy()
-        if self.llvm_major_version >= LLVM_VER_FOR_RUNTIMES and self.project_is_enabled(
-                'compiler-rt'):
+        if self.llvm_major_version >= LLVM_VER_FOR_RUNTIMES and 'compiler-rt' in llvm_enable_projects:
             llvm_enable_projects.remove('compiler-rt')
             self.cmake_defines['LLVM_ENABLE_RUNTIMES'] = 'compiler-rt'
         self.cmake_defines['LLVM_ENABLE_PROJECTS'] = ';'.join(llvm_enable_projects)
