@@ -1,0 +1,83 @@
+name: LLVM Toolchain Build
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0,4'
+  workflow_dispatch:  
+
+env:
+      GITHUB_EMAIL: ${{ secrets.EMAIL }}
+      GITHUB_TOKEN: ${{ secrets.API_TOKEN_GITHUB }}
+      GITHUB_USER: ${{ secrets.USERNAME }}
+
+jobs:
+  llvm-build:
+    runs-on: ubuntu-latest
+    
+    outputs:
+        llvm_version: ${{ steps.llvm_version.outputs.version }}
+    
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set build date
+      id: get-date
+      run: |
+        sudo ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
+        echo ::set-output name=date::$(/bin/date -u "+%Y%m%d")
+    - name: Setup
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc binutils-dev bison build-essential ca-certificates ccache clang cmake curl file flex git libelf-dev libstdc++-$(apt list libstdc++6 2>/dev/null | grep -Eos '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | cut -d . -f 1)-dev lld make ninja-build python3-dev texinfo u-boot-tools xz-utils zlib1g-dev --fix-broken --fix-missing
+    - name: Build
+      run: |
+        chmod a+x build-llvm.py
+        python3 build-llvm.py  --bolt --full-toolchain --lto thin --pgo llvm kernel-allyesconfig  --quiet-cmake --shallow-clone -t AArch64 ARM X86 --multicall --vendor-string "Stoke" --install-folder llvm-stoke
+    - name: Get LLVM Version
+      id: llvm_version
+      run: |
+        VERSION=$(./llvm-stoke/bin/clang --version | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "LLVM_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Detected LLVM version: $VERSION"  
+    - name: Create tarball
+      run: |
+        VERSION=${{ steps.llvm_version.outputs.version }}
+        tar -cJf stoke-llvm-${VERSION}-$(date -u +%d%m%Y).tar.xz llvm-stoke
+
+    - uses: actions/upload-artifact@main
+      with:
+       name: llvm-tarball
+       path: |
+         *.xz
+
+  publish-release:
+      needs: [llvm-build]
+      runs-on: ubuntu-latest
+
+      steps:
+        - uses: actions/checkout@v6
+        - name: Restoring artifacts
+          uses: actions/download-artifact@main         
+          with:
+            path: ${{ github.workspace }}
+        - name: Release Tag
+          env:
+            LLVM_VERSION: ${{ needs.llvm-build.outputs.llvm_version }}
+            GITHUB_TOKEN: ${{ secrets.API_TOKEN_GITHUB }}
+            GITHUB_EMAIL: ${{ secrets.EMAIL }}
+            GITHUB_USER: ${{ secrets.USERNAME }}         
+          id: release_tag
+          run: echo "TAG_NAME=llvm-${LLVM_VERSION}-$(date -u +%d%m%Y)" >> $GITHUB_ENV
+        - name: Create Release
+          env:
+           LLVM_VERSION: ${{ needs.llvm-build.outputs.llvm_version }}
+           GITHUB_TOKEN: ${{ secrets.API_TOKEN_GITHUB }}
+           GITHUB_EMAIL: ${{ secrets.EMAIL }}
+           GITHUB_USER: ${{ secrets.USERNAME }}
+          run: |
+            gh release create ${{ env.TAG_NAME }} \
+            *.tar.xz \
+            --title "LLVM ${LLVM_VERSION} (Stoke) - $(date -u +%d %b %Y)" \
+            --notes "Multicall LLVM toolchain optimised with PGO, ThinLTO, BOLT by AppleShake."
