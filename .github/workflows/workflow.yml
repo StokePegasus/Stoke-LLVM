@@ -33,7 +33,7 @@ jobs:
     - name: Build
       run: |
         chmod a+x build-llvm.py
-        python3 build-llvm.py  --bolt --full-toolchain --lto thin --pgo kernel-allyesconfig  --quiet-cmake --shallow-clone --targets AArch64 ARM X86 --multicall --projects clang lld polly compiler-rt --vendor-string "Stoke" --install-folder llvm-stoke --build-stage1-only
+        python3 build-llvm.py  --bolt --full-toolchain --lto thin --pgo kernel-allyesconfig  --quiet-cmake --shallow-clone --targets AArch64 ARM X86 --multicall --projects clang lld polly compiler-rt --vendor-string "Stoke" --install-folder llvm-stoke
     - name: Get LLVM Version
       id: llvm_version
       run: |
